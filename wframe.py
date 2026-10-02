@@ -1,4 +1,5 @@
 import pygame
+from Xlib import display
 from pygame._sdl2 import Window
 
 pygame.init()
@@ -7,6 +8,7 @@ frame = pygame.display.set_mode((800, 600), pygame.NOFRAME)
 pygame.display.set_caption("Frameless Window")
 
 sdl_window = Window.from_display_module()
+data = display.Display().screen().root.query_pointer()._data
 
 #pygame.display.set_window_position((100,100))
 sdl_window.position = (100, 100)
@@ -27,7 +29,7 @@ while walking:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
         if pygame.mouse.get_pressed()[0]:
             #pygame.display.set_window_position((pygame.mouse.get_pos(True)[0] - mouse_pos[0], pygame.mouse.get_pos(True)[1] - mouse_pos[1]))
-            sdl_window.position = (pygame.mouse.get_pos(True)[0] - mouse_pos[0], pygame.mouse.get_pos(True)[1] - mouse_pos[1])
+            sdl_window.position = (data['root_x'] - mouse_pos[0], data['root_y'] - mouse_pos[1])
     else:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
