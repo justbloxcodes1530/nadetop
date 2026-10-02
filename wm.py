@@ -2,10 +2,13 @@ import pygame
 import importlib
 from ewmh import EWMH
 from Xlib import X, display
+from pygame._sdl2 import Window
 
 disp = display.Display()
 ewmh = EWMH(disp)
 root = disp.screen().root
+
+sdl_window = Window.from_display_module()
 
 root.change_attributes(event_mask=X.SubstructureNotifyMask)
 
@@ -13,7 +16,8 @@ pygame.init()
 
 screen = pygame.display.set_mode((800, 600), pygame.NOFRAME)
 pygame.display.set_caption("Frameless Window")
-pygame.display.set_window_position((0,0))
+#pygame.display.set_window_position((0,0))
+sdl_window.position = (0, 0)
 
 screen = pygame.display.set_mode(pygame.display.get_desktop_sizes()[0], pygame.NOFRAME)
 

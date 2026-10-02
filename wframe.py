@@ -1,8 +1,17 @@
 import pygame
+from pygame._sdl2 import Window
+
+pygame.init()
 
 frame = pygame.display.set_mode((800, 600), pygame.NOFRAME)
 pygame.display.set_caption("Frameless Window")
-pygame.display.set_window_position((100,100))
+
+sdl_window = Window.from_display_module()
+
+#pygame.display.set_window_position((100,100))
+sdl_window.position = (100, 100)
+
+text = pygame.font.Font(None, 24)
 
 clock = pygame.time.Clock()
 walking = True
@@ -20,6 +29,8 @@ while walking:
             pygame.display.set_window_position((pygame.mouse.get_pos(True)[0] - mouse_pos[0], pygame.mouse.get_pos(True)[1] - mouse_pos[1]))
     else:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
+    frame.blit(text.render("test", True, (255,255,255), (0,0,0)), ((8 + 6) / 2, (8 + 6) / 2))
 
     pygame.display.flip()
     clock.tick(60)
