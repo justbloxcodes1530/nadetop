@@ -26,7 +26,8 @@ while walking:
     if pygame.draw.rect(frame, (0, 127, 255), pygame.Rect(0, 0, frame.get_width(), 32)).collidepoint(mouse_pos):
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
         if pygame.mouse.get_pressed()[0]:
-            pygame.display.set_window_position((pygame.mouse.get_pos(True)[0] - mouse_pos[0], pygame.mouse.get_pos(True)[1] - mouse_pos[1]))
+            #pygame.display.set_window_position((pygame.mouse.get_pos(True)[0] - mouse_pos[0], pygame.mouse.get_pos(True)[1] - mouse_pos[1]))
+            sdl_window.position = (pygame.mouse.get_pos(True)[0] - mouse_pos[0], pygame.mouse.get_pos(True)[1] - mouse_pos[1])
     else:
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
 
