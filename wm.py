@@ -3,125 +3,74 @@ import subprocess
 import time
 import sys
 
-# Direct to Termux:X11 display port
 os.environ['DISPLAY'] = ':0'
 
-# Track running frames matching to application IDs: {app_window_id: frame_process_object}
-active_frames = {}
+# Store processes cleanly: {app_id: {'frame': proc_obj, 'resize': proc_obj}}
+active_decorations = {}
 
 def get_visible_apps():
-    """Returns a list of visible window IDs, excluding our own frames."""
     try:
-        result = subprocess.run(
-            ['xdotool', 'search', '--onlyvisible', '--name', '.*'],
-            capture_output=True, text=True, check=True
-        )
-        all_ids = result.stdout.strip().split('\n')
-        
-        app_ids = []
-        for wid in all_ids:
-            if not wid.isdigit():
-                continue
-            
-            # Fetch window title to avoid framing our own frames
-            title_res = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
-            title = title_res.stdout.strip()
-            
-            # Skip empty names or our own frames
-            if not title or "NADETOP_WINDOW_FRAME" in title:
-                continue
-                
-            app_ids.append(wid)
-        return app_ids
-    except subprocess.CalledProcessError:
+        res = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '.*'], capture_output=True, text=True, check=True)
+        return [wid for wid in res.stdout.strip().split('\n') if wid.isdigit() and "NADETOP" not in subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True).stdout]
+    except Exception:
         return []
 
 def get_geometry(wid):
-    """Returns (x, y, w, h) of an X11 window using xdotool."""
     try:
-        result = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', str(wid)], capture_output=True, text=True, check=True)
-        geo = {}
-        for line in result.stdout.strip().split('\n'):
-            if '=' in line:
-                k, v = line.split('=')
-                geo[k] = int(v)
-        return geo.get('X'), geo.get('Y'), geo.get('WIDTH'), geo.get('HEIGHT')
+        res = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', str(wid)], capture_output=True, text=True, check=True)
+        g = {line.split('=')[0]: int(line.split('=')[1]) for line in res.stdout.strip().split('\n') if '=' in line}
+        return g.get('X'), g.get('Y'), g.get('WIDTH'), g.get('HEIGHT')
     except Exception:
         return None
 
-def sync_frame_and_app(app_id):
-    """Checks the app window position and moves/layers its frame to match it."""
-    geo = get_geometry(app_id)
-    if not geo:
-        return False # Window was closed
-        
-    x, y, w, h = geo
-    
-    # 1. Find the frame window matching this specific application
-    try:
-        # Search for our custom Pygame frames
-        res = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True)
-        frame_ids = res.stdout.strip().split('\n')
-        
-        for fid in frame_ids:
-            if not fid.isdigit():
-                continue
-                
-            # Position the wframe.py window directly above the app window canvas
-            # Width matches app window, height is hardcoded to 32px
-            frame_y = y - 32
-            subprocess.run(['xdotool', 'windowmove', fid, str(x), str(frame_y)])
-            subprocess.run(['xdotool', 'windowsize', fid, str(w), '32'])
-            
-            # LAYER STRATEGY: Raise frame to top, raise app right underneath it
-            subprocess.run(['xdotool', 'windowraise', fid])
-            break # Found our target frame
-            
-    except Exception as e:
-        pass
-    return True
-
-# =====================================================================
-# MAIN WINDOW MANAGER LOOP
-# =====================================================================
-print("[WM] NADATOP Window Manager Orchestrator Started.")
-
+print("[WM] NADETOP Haiku Architecture Active.")
 try:
     while True:
-        # 1. Scan for newly opened applications
         apps = get_visible_apps()
         
+        # Spawn components for new apps
         for app_id in apps:
-            if app_id not in active_frames:
-                print(f"[WM] Found application window [{app_id}]. Spawning window frame layer...")
-                
-                # Fetch app position to spawn the frame nearby initially
-                geo = get_geometry(app_id)
-                if geo:
-                    # Spawn wframe.py as a background subprocess 
-                    # We pass the application window ID as a terminal argument!
-                    proc = subprocess.Popen([sys.executable, 'wframe.py', app_id])
-                    active_frames[app_id] = proc
-                    
-        # 2. Maintain active frames alignment and window layering
+            if app_id not in active_decorations:
+                print(f"[WM] Decorating Window {app_id}")
+                f_proc = subprocess.Popen([sys.executable, 'wframe.py', app_id])
+                r_proc = subprocess.Popen([sys.executable, 'wresize.py', app_id])
+                active_decorations[app_id] = {'frame': f_proc, 'resize': r_proc}
+        
+        # Maintain positioning anchors 
         dead_apps = []
-        for app_id, proc in active_frames.items():
-            # Check if application window still exists
-            alive = sync_frame_and_app(app_id)
-            
-            # If the application process or frame has been shut down
-            if not alive or proc.poll() is not None:
-                print(f"[WM] App window [{app_id}] closed. Terminating matching frame...")
-                proc.terminate()
+        for app_id, procs in active_decorations.items():
+            geo = get_geometry(app_id)
+            if not geo or procs['frame'].poll() is not None:
+                procs['frame'].terminate()
+                procs['resize'].terminate()
                 dead_apps.append(app_id)
+                continue
                 
-        # Clean up tracking dictionary references
-        for da in dead_apps:
-            del active_frames[da]
+            x, y, w, h = geo
             
-        time.sleep(0.05) # Keep loop efficient (~20Hz layout synchronization)
-
+            # Use xdotool to anchor elements based on the client window box
+            # 1. Top-Left: Place Haiku Yellow Tab Frame 32px above app
+            try:
+                f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
+                if f_id.isdigit():
+                    # Only map frame if user isn't actively holding down the drag loop
+                    # Let wframe.py handle movements, wm.py syncs layering
+                    subprocess.Popen(['xdotool', 'windowraise', f_id])
+            except Exception: pass
+            
+            # 2. Bottom-Right: Align resize grip handle box precisely at (x+w-16, y+h-16)
+            try:
+                r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
+                if r_id.isdigit():
+                    subprocess.Popen(['xdotool', 'windowmove', r_id, str(x + w - 16), str(y + h - 16)])
+                    subprocess.Popen(['xdotool', 'windowraise', r_id])
+            except Exception: pass
+            
+        for da in dead_apps:
+            del active_decorations[da]
+            
+        time.sleep(0.03)
 except KeyboardInterrupt:
-    print("\n[WM] Shutting down manager loop. Cleaning window decorations...")
-    for proc in active_frames.values():
-        proc.terminate()
+    for procs in active_decorations.values():
+        procs['frame'].terminate()
+        procs['resize'].terminate()
