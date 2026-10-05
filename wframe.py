@@ -9,8 +9,12 @@ from pygame._sdl2 import Window
 os.environ['DISPLAY'] = ':0'
 TARGET_APP_ID = sys.argv[1] if len(sys.argv) > 1 else None
 
+# =====================================================================
+# SAFE SOCKET DIRECTORY (Bypasses Android Sandbox Restrictions)
+# =====================================================================
+SOCKET_PATH = os.path.expanduser("~/.nadetop_wm.sock")
+
 pygame.init()
-# Notice the smaller width! This makes it look like a Haiku OS Tab
 TAB_WIDTH = 256
 TAB_HEIGHT = 32
 frame = pygame.display.set_mode((TAB_WIDTH, TAB_HEIGHT), pygame.NOFRAME)
@@ -54,18 +58,16 @@ def request_wm_focus(app_id):
     if not app_id:
         return
     try:
-        # Open a quick link to the WM background server socket
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.connect("/tmp/nadetop_wm.sock")
+        # --- FIXED PATH REFERENCE ---
+        s.connect(SOCKET_PATH) 
         s.sendall(f"focus:{app_id}".encode('utf-8'))
         s.close()
     except Exception:
-        # If the WM isn't running or listening, fail silently without freezing the frame
         pass
 
 # Button dimensions & positions on the tab layout
 font = pygame.font.Font(None, 20)
-# Button layout bounding rects
 btn_min = pygame.Rect(170, 6, 20, 20)
 btn_max = pygame.Rect(195, 6, 20, 20)
 btn_cls = pygame.Rect(220, 6, 20, 20)
@@ -93,18 +95,14 @@ while True:
             if event.button == 1:
                 mx, my = event.pos
                 
-                # --- THE IPC TRIGGER ---
-                # Notify wm.py immediately that this app should take absolute focus!
                 request_wm_focus(TARGET_APP_ID)
                 
-                # Check button clicks instead of dragging!
                 if btn_cls.collidepoint((mx, my)) and TARGET_APP_ID:
                     subprocess.Popen(['xdotool', 'windowkill', str(TARGET_APP_ID)])
                     sys.exit()
                 elif btn_min.collidepoint((mx, my)) and TARGET_APP_ID:
                     subprocess.Popen(['xdotool', 'windowminimize', str(TARGET_APP_ID)])
                 elif btn_max.collidepoint((mx, my)) and TARGET_APP_ID:
-                    # Toggles full screen size window size layout
                     if not maximized:
                         maximized = True
                         oldx, oldy, oldw, oldh = get_geometry(TARGET_APP_ID)
@@ -116,7 +114,6 @@ while True:
                         sdl_window.position = (oldx, oldy - 32)
                         subprocess.Popen(['xdotool', 'windowsize', str(TARGET_APP_ID), str(oldw), str(oldh)])
                         subprocess.Popen(['xdotool', 'windowmove', str(TARGET_APP_ID), str(oldx), str(oldy)])
-                # If clicking anywhere else on the tab bar, trigger normal drag
                 elif 0 <= my <= TAB_HEIGHT:
                     is_dragging = True
                     wx, wy = sdl_window.position
@@ -150,15 +147,12 @@ while True:
         currtitle = title(TARGET_APP_ID)
         titleupdate = time.time() + 1
     
-    # Label Text
     frame.blit(font.render(currtitle, True, (0, 0, 0)), (10, 10))
     
-    # Draw Clear Buttons
-    pygame.draw.rect(frame, (180, 50, 50) if btn_cls.collidepoint(pygame.mouse.get_pos()) else (140, 0, 0), btn_cls) # Close (Red)
-    pygame.draw.rect(frame, (50, 180, 50) if btn_max.collidepoint(pygame.mouse.get_pos()) else (0, 140, 0), btn_max) # Max (Green)
-    pygame.draw.rect(frame, (200, 200, 50) if btn_min.collidepoint(pygame.mouse.get_pos()) else (140, 140, 0), btn_min) # Min (Yellowish-orange)
+    pygame.draw.rect(frame, (180, 50, 50) if btn_cls.collidepoint(pygame.mouse.get_pos()) else (140, 0, 0), btn_cls)
+    pygame.draw.rect(frame, (50, 180, 50) if btn_max.collidepoint(pygame.mouse.get_pos()) else (0, 140, 0), btn_max)
+    pygame.draw.rect(frame, (200, 200, 50) if btn_min.collidepoint(pygame.mouse.get_pos()) else (140, 140, 0), btn_min)
     
-    # Minimalist inner indicators
     frame.blit(font.render("_", True, (255,255,255)), (177, 9))
     frame.blit(font.render("=", True, (255,255,255)), (201, 9))
     frame.blit(font.render("X", True, (255,255,255)), (227, 8))

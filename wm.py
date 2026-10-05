@@ -7,7 +7,7 @@ import threading
 
 os.environ['DISPLAY'] = ':0'
 
-SOCKET_PATH = "/tmp/nadetop_wm.sock"
+SOCKET_PATH = os.path.expanduser("~/.nadetop_wm.sock")
 
 # Clean up any leftover dead socket files from old crashes
 if os.path.exists(SOCKET_PATH):
