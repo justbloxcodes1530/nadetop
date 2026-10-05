@@ -1,18 +1,26 @@
 import os
 import sys
+import socket
 
 # =====================================================================
 # 1. TERMUX ABSTRACT SOCKET FIX (Must run before importing Xlib display)
 # =====================================================================
 try:
     import Xlib.support.unix_connect as unix_connect
-    def get_termux_abstract_socket(*args, **kwargs):
-        # The display number is always the last positional argument before auth flags,
-        # or we can extract it reliably from args[2] depending on the Xlib version.
-        # To be absolutely safe in Termux, we assume display :0 -> X0
-        dno = args[2] if len(args) > 2 else 0
-        return b'\0.X11-unix/X' + str(dno).encode()
     
+    def get_termux_abstract_socket(*args, **kwargs):
+        # Create a real Unix domain stream socket
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        
+        # Termux:X11 defaults to display :0 -> abstract path '\0.X11-unix/X0'
+        # The abstract namespace requires the first byte to be a null byte (\0)
+        abstract_address = b'\0.X11-unix/X0'
+        
+        # Manually connect the socket to Termux's background display server
+        s.connect(abstract_address)
+        return s
+
+    # Inject the working socket directly into Xlib
     unix_connect.get_socket = get_termux_abstract_socket
 except ImportError:
     pass
