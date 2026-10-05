@@ -1,60 +1,112 @@
 import os
 import subprocess
-import random
-import math
+import pygame
+from pygame._sdl2 import Window
 
-# Ensure we map directly to Termux:X11
+# Map directly to Termux:X11
 os.environ['DISPLAY'] = ':0'
 
-def list_windows():
-    """Returns a list of all raw X11 window IDs and their titles."""
+# =====================================================================
+# GEOMETRY ENGINE FUNCTIONS (Using xdotool)
+# =====================================================================
+def get_window_geometry(window_id):
+    """
+    Returns (x, y, width, height) of a window using xdotool.
+    Returns None if the window is closed or invalid.
+    """
     try:
-        # Search for all windows (using a blank regex pattern matching everything)
+        # Run xdotool getwindowgeometry --shell to get clean parseable text output
         result = subprocess.run(
-            ['xdotool', 'search', '--onlyvisible', '--name', '.*'], 
+            ['xdotool', 'getwindowgeometry', '--shell', str(window_id)],
             capture_output=True, text=True, check=True
         )
-        window_ids = result.stdout.strip().split('\n')
         
-        windows = []
-        for wid in window_ids:
-            if not wid.isdigit():
-                continue
-            # Get the name/title of each specific window ID
-            name_res = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
-            title = name_res.stdout.strip()
-            if title:
-                windows.append({'id': wid, 'title': title})
-        return windows
-    except subprocess.CalledProcessError:
-        return []
+        # Parse out variables from shell format (e.g., X=100\nY=200\nWIDTH=800\nHEIGHT=600)
+        geo = {}
+        for line in result.stdout.strip().split('\n'):
+            if '=' in line:
+                key, val = line.split('=')
+                geo[key] = int(val)
+                
+        return geo.get('X'), geo.get('Y'), geo.get('WIDTH'), geo.get('HEIGHT')
+    except (subprocess.CalledProcessError, ValueError):
+        return None
 
-def focus_window(window_id):
-    """Brings the specific window ID to focus."""
-    subprocess.run(['xdotool', 'windowactivate', str(window_id)])
+# =====================================================================
+# PYGAME INITIALIZATION
+# =====================================================================
+pygame.init()
 
-def move_and_resize_window(window_id, x, y, width, height):
-    """Moves and resizes the target window ID instantly."""
-    # Move the window
-    subprocess.run(['xdotool', 'windowmove', str(window_id), str(x), str(y)])
-    # Resize the window
-    subprocess.run(['xdotool', 'windowsize', str(window_id), str(width), str(height)])
+frame = pygame.display.set_mode((800, 32), pygame.NOFRAME)
+pygame.display.set_caption("NADATOP_WINDOW_FRAME")
 
-# ==========================================
-# SANITY CHECK TEST RUN
-# ==========================================
-if __name__ == "__main__":
-    print("Scanning active Termux:X11 windows via xdotool...")
-    windows = list_windows()
+sdl_window = Window.from_display_module()
+sdl_window.position = (100, 100)
+
+text = pygame.font.Font(None, 24)
+clock = pygame.time.Clock()
+
+# Window Dragging State Variables
+is_dragging = False
+drag_offset_x = 0
+drag_offset_y = 0
+
+walking = True
+
+# TEST SCAN: Print the position of a window when your script launches
+print("[WM-Log] Testing geometry acquisition on start...")
+# Substitute with a real window ID from your xdotool search list output
+test_id = "your_firefox_or_xeyes_id_here" 
+# Example output usage:
+# print(f"Window Geometry: {get_window_geometry(test_id)}")
+
+# =====================================================================
+# MAIN LOOP
+# =====================================================================
+while walking:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            walking = False
+            
+    # --- Smooth Title Bar Drag Logic ---
+    mouse_buttons = pygame.mouse.get_pressed()
+    # Read mouse coordinates relative to our Pygame frame window canvas
+    local_mouse_x, local_mouse_y = pygame.mouse.get_pos() 
     
-    if not windows:
-        print("No windows detected yet. Open a window (like 'xfce4-terminal' or an app) in Termux:X11 first!")
-    
-    for win in windows:
-        move_and_resize_window(win['id'], int(random.random() * 100), int(random.random() * 100), 640, 480)
-        print(f" Found -> ID: {win['id']} | Title: {win['title']}")
+    # If hovering over the frame bar
+    if 0 <= local_mouse_x <= frame.get_width() and 0 <= local_mouse_y <= 32:
+        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
         
-        # Example Test: If you see your window, you can uncomment this to move it!
-        # print(f"Moving {win['title']} to top left...")
-        # move_and_resize_window(win['id'], x=50, y=50, width=600, height=400)
-        # focus_window(win['id'])
+        if mouse_buttons[0]:  # Left Click down
+            if not is_dragging:
+                is_dragging = True
+                # Lock down where the cursor is relative to the absolute top-left window corner
+                drag_offset_x = local_mouse_x
+                drag_offset_y = local_mouse_y
+        else:
+            is_dragging = False
+    else:
+        if not mouse_buttons[0]:
+            is_dragging = False
+            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
+
+    # Move the Window smoothly using system pointer mapping 
+    if is_dragging and mouse_buttons[0]:
+        # Get absolute mouse position on desktop screen using Pygame's global screen utility
+        abs_mouse_x, abs_mouse_y = pygame.mouse.get_pos()
+        # Reposition frame based on target dragging offset anchors
+        sdl_window.position = (
+            sdl_window.position[0] + (local_mouse_x - drag_offset_x),
+            sdl_window.position[1] + (local_mouse_y - drag_offset_y)
+        )
+
+    # --- Rendering ---
+    frame.fill((0, 127, 255)) # Fill blue canvas background
+    
+    # Blit text layout frame cleanly
+    frame.blit(text.render("NADATOP Window Manager Frame", True, (255, 255, 255)), (12, 8))
+
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()

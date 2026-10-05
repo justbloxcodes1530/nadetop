@@ -3,8 +3,8 @@ from pygame._sdl2 import Window
 
 pygame.init()
 
-frame = pygame.display.set_mode((800, 600), pygame.NOFRAME)
-pygame.display.set_caption("Frameless Window")
+frame = pygame.display.set_mode((800, 32), pygame.NOFRAME)
+pygame.display.set_caption("NADATOP_WINDOW_FRAME")
 
 sdl_window = Window.from_display_module()
 
