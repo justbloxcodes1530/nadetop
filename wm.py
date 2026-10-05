@@ -3,34 +3,44 @@ import sys
 import socket
 
 # =====================================================================
-# INTERCEPT AND AUTO-SCAN TERMUX ABSTRACT X11 SOCKETS
+# 1. FIXED ABSTRACT NETWORK SCANNER FOR TERMUX:X11
 # =====================================================================
 try:
     import Xlib.support.unix_connect as unix_connect
     
     def get_termux_abstract_socket(*args, **kwargs):
-        # Scan through typical X11 display numbers in case :0 is occupied
-        for dno in [0, 1, 2, 3]:
-            abstract_address = f'\0.X11-unix/X{dno}'.encode()
+        # We loop through possible formats since Termux apps isolate paths dynamically.
+        # Abstract socket names begin with a null byte (\0).
+        possible_addresses = [
+            b'\0.X11-unix/X0',
+            b'\0.X11-unix/X1',
+            b'\0/tmp/.X11-unix/X0',
+            b'\0/tmp/.X11-unix/X1'
+        ]
+        
+        for address in possible_addresses:
             try:
                 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                s.connect(abstract_address)
-                # Success! Dynamically match the environment variable to what we found
-                os.environ['DISPLAY'] = f':{dno}'
-                print(f"Connected successfully to Termux:X11 on display :{dno}!")
+                s.connect(address)
+                # Found it! Update our environment string to match the successful binding
+                display_num = address[-1:] # grab '0' or '1'
+                os.environ['DISPLAY'] = f':{display_num.decode()}'
+                print(f"[WM-Log] Successfully attached to abstract socket address: {address}")
                 return s
             except (socket.error, ConnectionRefusedError):
                 s.close()
                 continue
-        
-        # If everything fails, raise the original error to let us know it's truly dead
-        raise ConnectionRefusedError("Could not find any active Termux:X11 server instances.")
+                
+        raise ConnectionRefusedError(
+            "Could not connect to any abstract Termux:X11 socket addresses. "
+            "Please ensure the Termux:X11 app is open and visible on your screen."
+        )
 
+    # Inject the scanner directly over Xlib's default connector
     unix_connect.get_socket = get_termux_abstract_socket
 except ImportError:
     pass
 
-# Default fallback environment string
 os.environ['DISPLAY'] = ':0'
 
 # =====================================================================
