@@ -1,5 +1,7 @@
 import os
 import subprocess
+import random
+import math
 
 # Ensure we map directly to Termux:X11
 os.environ['DISPLAY'] = ':0'
@@ -49,6 +51,7 @@ if __name__ == "__main__":
         print("No windows detected yet. Open a window (like 'xfce4-terminal' or an app) in Termux:X11 first!")
     
     for win in windows:
+        move_and_resize_window(win['id'], int(random.random() * 100), int(random.random() * 100), 640, 480)
         print(f" Found -> ID: {win['id']} | Title: {win['title']}")
         
         # Example Test: If you see your window, you can uncomment this to move it!
