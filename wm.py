@@ -1,43 +1,77 @@
+import os
+import sys
+
+# =====================================================================
+# 1. TERMUX ABSTRACT SOCKET FIX (Must run before importing Xlib display)
+# =====================================================================
+try:
+    import Xlib.support.unix_connect as unix_connect
+    def get_termux_abstract_socket(dname, host, dno):
+        return b'\0.X11-unix/X' + str(dno).encode()
+    unix_connect.get_socket = get_termux_abstract_socket
+except ImportError:
+    pass
+
+os.environ['DISPLAY'] = ':0'
+
+# =====================================================================
+# 2. IMPORTS
+# =====================================================================
 import pygame
-import importlib
 from ewmh import EWMH
 from Xlib import X, display
 from pygame._sdl2 import Window
 
+# Initialize Xlib Display
 disp = display.Display(":0")
 ewmh = EWMH(disp)
 root = disp.screen().root
 
-sdl_window = Window.from_display_module()
-
+# Listen for window creation/mapping globally
 root.change_attributes(event_mask=X.SubstructureNotifyMask)
 
+# Initialize Pygame
 pygame.init()
 
-screen = pygame.display.set_mode((800, 600), pygame.NOFRAME)
+# Get screen resolution and create frameless window
+desktop_size = pygame.display.get_desktop_sizes()[0]
+screen = pygame.display.set_mode(desktop_size, pygame.NOFRAME)
 pygame.display.set_caption("Frameless Window")
-#pygame.display.set_window_position((0,0))
+
+# Setup SDL2 Window hook to force position
+sdl_window = Window.from_display_module()
 sdl_window.position = (0, 0)
-
-screen = pygame.display.set_mode(pygame.display.get_desktop_sizes()[0], pygame.NOFRAME)
-
-screen.fill((0, 127, 255))
 
 clock = pygame.time.Clock()
 walking = True
 
+print("Script started successfully! Listening for X11 events...")
+
+# =====================================================================
+# 3. MAIN LOOP
+# =====================================================================
 while walking:
+    # Handle Pygame Events (Touch / Mouse / Keyboard)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             walking = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:  # Easy way to exit on Termux
+                walking = False
 
+    # Draw to screen
+    screen.fill((0, 127, 255))
     pygame.display.flip()
-    ev = disp.next_event()
 
-    if ev.type == X.CreateNotify:
-        print(f"New window created! ID: {hex(ev.window.id)}")
-    elif ev.type == X.MapNotify:
-        print(f"Window mapped (shown): {hex(ev.window.id)}")
+    # Handle X11 Events without freezing Pygame (NON-BLOCKING)
+    while disp.pending_events() > 0:
+        ev = disp.next_event()
+        
+        if ev.type == X.CreateNotify:
+            print(f" New window created! ID: {hex(ev.window.id)}")
+        elif ev.type == X.MapNotify:
+            print(f" Window mapped (shown): {hex(ev.window.id)}")
+
     clock.tick(60)
 
 pygame.quit()
