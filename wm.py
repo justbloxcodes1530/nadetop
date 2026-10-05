@@ -128,21 +128,26 @@ try:
             x, y, w, h = geo
             
             # =====================================================================
-            # ATOMIC WINDOW LAYERING ENGINE (The Fix)
+            # SINGLE-SHOT ATOMIC LAYERING SYSTEM (The Fix)
             # =====================================================================
             try:
-                # 1. First, find our specific custom frame and resize handle IDs
-                # (Searching by name ensuring we isolate the correct matching components)
+                # 1. Isolate the specific custom frame and resize handle IDs
                 f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 
-                # 2. ENFORCE THE STACKING QUEUE ORDER:
-                # We raise them in a split-second sequence so the system locks them together.
-                # App goes down first, decorations sit securely on the absolute top layer.
                 if f_id.isdigit() and r_id.isdigit():
-                    subprocess.Popen(['xdotool', 'windowraise', str(app_id)]) # App Canvas (Bottom Layer)
-                    subprocess.Popen(['xdotool', 'windowraise', str(f_id)])   # Yellow Tab Title Bar (Middle Layer)
-                    subprocess.Popen(['xdotool', 'windowraise', str(r_id)])   # Outside Resize Grip (Top Layer)
+                    # Check if the user is currently holding down the mouse click
+                    mouse_check = subprocess.run(['xdotool', 'getmouselocation', '--shell'], capture_output=True, text=True)
+                    is_clicking = "button=1" in mouse_check.stdout
+                    
+                    if not is_clicking:
+                        # --- THE ATOMIC CHAIN FIX ---
+                        # Instead of 3 separate Popen processes fighting each other, we chain them 
+                        # together into ONE string executed sequentially by the shell.
+                        # Order: Raise App -> Raise Frame -> Raise Grip
+                        layer_command = f"xdotool windowraise {app_id} windowraise {f_id} windowraise {r_id}"
+                        subprocess.Popen(layer_command, shell=True)
+                        
             except Exception:
                 pass
 
