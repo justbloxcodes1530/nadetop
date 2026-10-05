@@ -89,10 +89,12 @@ while True:
                     if not maximized:
                         maximized = True
                         oldx, oldy, oldw, oldh = get_geometry(TARGET_APP_ID)
+                        sdl_window.position = (0,0)
                         subprocess.Popen(['xdotool', 'windowsize', str(TARGET_APP_ID), '100%', '100%'])
                         subprocess.Popen(['xdotool', 'windowmove', str(TARGET_APP_ID), '0', '32'])
                     else:
                         maximized = False
+                        sdl_window.position = (oldx, oldy - 32)
                         subprocess.Popen(['xdotool', 'windowsize', str(TARGET_APP_ID), str(oldw), str(oldh)])
                         subprocess.Popen(['xdotool', 'windowmove', str(TARGET_APP_ID), str(oldx), str(oldy)])
                 # If clicking anywhere else on the tab bar, trigger normal drag

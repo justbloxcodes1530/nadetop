@@ -10,7 +10,7 @@ active_decorations = {}
 
 def get_visible_apps():
     try:
-        # Search for all visible windows
+        # 1. Search for all visible windows
         res = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '.*'], capture_output=True, text=True, check=True)
         raw_ids = res.stdout.strip().split('\n')
         
@@ -19,14 +19,32 @@ def get_visible_apps():
             if not wid.isdigit():
                 continue
             
-            # Fetch the actual window name
+            # 2. Fetch the window title
             name_res = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
             title = name_res.stdout.strip()
             
-            # CRUCIAL FIX: If the window is a NADETOP element or blank, completely ignore it!
             if "NADETOP" in title or not title:
                 continue
+
+            # =====================================================================
+            # CONTEXT MENU & POPUP FILTER (The Fix)
+            # =====================================================================
+            try:
+                # Query the window type properties via xprop underlying mapping
+                # We target '_NET_WM_WINDOW_TYPE' to see if it's an app or a menu override
+                type_res = subprocess.run(
+                    ['xprop', '-id', wid, '_NET_WM_WINDOW_TYPE'], 
+                    capture_output=True, text=True, timeout=0.1
+                )
+                type_output = type_res.stdout.lower()
                 
+                # If the window is explicitly flagged as a menu, popup, or tooltip, skip it!
+                if any(x in type_output for x in ["menu", "popup", "dropdown", "tooltip", "notification"]):
+                    continue
+            except Exception:
+                # If xprop fails or times out, proceed cautiously or skip
+                pass
+
             filtered_ids.append(wid)
         return filtered_ids
     except Exception:

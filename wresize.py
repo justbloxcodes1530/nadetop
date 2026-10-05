@@ -8,7 +8,7 @@ os.environ['DISPLAY'] = ':0'
 TARGET_APP_ID = sys.argv[1] if len(sys.argv) > 1 else None
 
 pygame.init()
-SIZE = 24  # Bumped to 24px for cleaner high-DPI tracking on mobile touch
+SIZE = 16
 frame = pygame.display.set_mode((SIZE, SIZE), pygame.NOFRAME)
 pygame.display.set_caption("NADETOP_RESIZE_GRIP")
 
