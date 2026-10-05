@@ -1,112 +1,127 @@
 import os
 import subprocess
-import pygame
-from pygame._sdl2 import Window
+import time
+import sys
 
-# Map directly to Termux:X11
+# Direct to Termux:X11 display port
 os.environ['DISPLAY'] = ':0'
 
-# =====================================================================
-# GEOMETRY ENGINE FUNCTIONS (Using xdotool)
-# =====================================================================
-def get_window_geometry(window_id):
-    """
-    Returns (x, y, width, height) of a window using xdotool.
-    Returns None if the window is closed or invalid.
-    """
+# Track running frames matching to application IDs: {app_window_id: frame_process_object}
+active_frames = {}
+
+def get_visible_apps():
+    """Returns a list of visible window IDs, excluding our own frames."""
     try:
-        # Run xdotool getwindowgeometry --shell to get clean parseable text output
         result = subprocess.run(
-            ['xdotool', 'getwindowgeometry', '--shell', str(window_id)],
+            ['xdotool', 'search', '--onlyvisible', '--name', '.*'],
             capture_output=True, text=True, check=True
         )
+        all_ids = result.stdout.strip().split('\n')
         
-        # Parse out variables from shell format (e.g., X=100\nY=200\nWIDTH=800\nHEIGHT=600)
+        app_ids = []
+        for wid in all_ids:
+            if not wid.isdigit():
+                continue
+            
+            # Fetch window title to avoid framing our own frames
+            title_res = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
+            title = title_res.stdout.strip()
+            
+            # Skip empty names or our own frames
+            if not title or "NADATOP_WINDOW_FRAME" in title:
+                continue
+                
+            app_ids.append(wid)
+        return app_ids
+    except subprocess.CalledProcessError:
+        return []
+
+def get_geometry(wid):
+    """Returns (x, y, w, h) of an X11 window using xdotool."""
+    try:
+        result = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', str(wid)], capture_output=True, text=True, check=True)
         geo = {}
         for line in result.stdout.strip().split('\n'):
             if '=' in line:
-                key, val = line.split('=')
-                geo[key] = int(val)
-                
+                k, v = line.split('=')
+                geo[k] = int(v)
         return geo.get('X'), geo.get('Y'), geo.get('WIDTH'), geo.get('HEIGHT')
-    except (subprocess.CalledProcessError, ValueError):
+    except Exception:
         return None
 
-# =====================================================================
-# PYGAME INITIALIZATION
-# =====================================================================
-pygame.init()
-
-frame = pygame.display.set_mode((800, 32), pygame.NOFRAME)
-pygame.display.set_caption("NADATOP_WINDOW_FRAME")
-
-sdl_window = Window.from_display_module()
-sdl_window.position = (100, 100)
-
-text = pygame.font.Font(None, 24)
-clock = pygame.time.Clock()
-
-# Window Dragging State Variables
-is_dragging = False
-drag_offset_x = 0
-drag_offset_y = 0
-
-walking = True
-
-# TEST SCAN: Print the position of a window when your script launches
-print("[WM-Log] Testing geometry acquisition on start...")
-# Substitute with a real window ID from your xdotool search list output
-test_id = "your_firefox_or_xeyes_id_here" 
-# Example output usage:
-# print(f"Window Geometry: {get_window_geometry(test_id)}")
-
-# =====================================================================
-# MAIN LOOP
-# =====================================================================
-while walking:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            walking = False
-            
-    # --- Smooth Title Bar Drag Logic ---
-    mouse_buttons = pygame.mouse.get_pressed()
-    # Read mouse coordinates relative to our Pygame frame window canvas
-    local_mouse_x, local_mouse_y = pygame.mouse.get_pos() 
-    
-    # If hovering over the frame bar
-    if 0 <= local_mouse_x <= frame.get_width() and 0 <= local_mouse_y <= 32:
-        pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
+def sync_frame_and_app(app_id):
+    """Checks the app window position and moves/layers its frame to match it."""
+    geo = get_geometry(app_id)
+    if not geo:
+        return False # Window was closed
         
-        if mouse_buttons[0]:  # Left Click down
-            if not is_dragging:
-                is_dragging = True
-                # Lock down where the cursor is relative to the absolute top-left window corner
-                drag_offset_x = local_mouse_x
-                drag_offset_y = local_mouse_y
-        else:
-            is_dragging = False
-    else:
-        if not mouse_buttons[0]:
-            is_dragging = False
-            pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
-
-    # Move the Window smoothly using system pointer mapping 
-    if is_dragging and mouse_buttons[0]:
-        # Get absolute mouse position on desktop screen using Pygame's global screen utility
-        abs_mouse_x, abs_mouse_y = pygame.mouse.get_pos()
-        # Reposition frame based on target dragging offset anchors
-        sdl_window.position = (
-            sdl_window.position[0] + (local_mouse_x - drag_offset_x),
-            sdl_window.position[1] + (local_mouse_y - drag_offset_y)
-        )
-
-    # --- Rendering ---
-    frame.fill((0, 127, 255)) # Fill blue canvas background
+    x, y, w, h = geo
     
-    # Blit text layout frame cleanly
-    frame.blit(text.render("NADATOP Window Manager Frame", True, (255, 255, 255)), (12, 8))
+    # 1. Find the frame window matching this specific application
+    try:
+        # Search for our custom Pygame frames
+        res = subprocess.run(['xdotool', 'search', '--name', 'NADATOP_WINDOW_FRAME'], capture_output=True, text=True)
+        frame_ids = res.stdout.strip().split('\n')
+        
+        for fid in frame_ids:
+            if not fid.isdigit():
+                continue
+                
+            # Position the wframe.py window directly above the app window canvas
+            # Width matches app window, height is hardcoded to 32px
+            frame_y = y - 32
+            subprocess.run(['xdotool', 'windowmove', fid, str(x), str(frame_y)])
+            subprocess.run(['xdotool', 'windowsize', fid, str(w), '32'])
+            
+            # LAYER STRATEGY: Raise frame to top, raise app right underneath it
+            subprocess.run(['xdotool', 'windowraise', fid])
+            break # Found our target frame
+            
+    except Exception as e:
+        pass
+    return True
 
-    pygame.display.flip()
-    clock.tick(60)
+# =====================================================================
+# MAIN WINDOW MANAGER LOOP
+# =====================================================================
+print("[WM] NADATOP Window Manager Orchestrator Started.")
 
-pygame.quit()
+try:
+    while True:
+        # 1. Scan for newly opened applications
+        apps = get_visible_apps()
+        
+        for app_id in apps:
+            if app_id not in active_frames:
+                print(f"[WM] Found application window [{app_id}]. Spawning window frame layer...")
+                
+                # Fetch app position to spawn the frame nearby initially
+                geo = get_geometry(app_id)
+                if geo:
+                    # Spawn wframe.py as a background subprocess 
+                    # We pass the application window ID as a terminal argument!
+                    proc = subprocess.Popen([sys.executable, 'wframe.py', app_id])
+                    active_frames[app_id] = proc
+                    
+        # 2. Maintain active frames alignment and window layering
+        dead_apps = []
+        for app_id, proc in active_frames.items():
+            # Check if application window still exists
+            alive = sync_frame_and_app(app_id)
+            
+            # If the application process or frame has been shut down
+            if not alive or proc.poll() is not None:
+                print(f"[WM] App window [{app_id}] closed. Terminating matching frame...")
+                proc.terminate()
+                dead_apps.append(app_id)
+                
+        # Clean up tracking dictionary references
+        for da in dead_apps:
+            del active_frames[da]
+            
+        time.sleep(0.05) # Keep loop efficient (~20Hz layout synchronization)
+
+except KeyboardInterrupt:
+    print("\n[WM] Shutting down manager loop. Cleaning window decorations...")
+    for proc in active_frames.values():
+        proc.terminate()
