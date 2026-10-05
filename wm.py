@@ -28,7 +28,7 @@ def get_visible_apps():
             title = title_res.stdout.strip()
             
             # Skip empty names or our own frames
-            if not title or "NADATOP_WINDOW_FRAME" in title:
+            if not title or "NADETOP_WINDOW_FRAME" in title:
                 continue
                 
             app_ids.append(wid)
