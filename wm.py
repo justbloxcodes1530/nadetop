@@ -29,11 +29,11 @@ def wm_ipc_listener():
                 target_app_id = message.split(":")[1]
                 print(f"[WM IPC] Focusing requested for app: {target_app_id}")
                 
-                # 1. Globally raise and activate the app using xdotool
-                subprocess.Popen(['xdotool', 'windowactivate', str(target_app_id)])
+                # --- FIXED FOCUS COMMAND ---
+                # Changed from 'windowactivate' to 'windowfocus' to bypass the _NET_ACTIVE_WINDOW check!
+                subprocess.Popen(['xdotool', 'windowfocus', str(target_app_id)])
                 
-                # 2. Immediately bring its matching components to the absolute top
-                # (Your existing wm.py loop will maintain alignment, but doing it here prevents focus lag)
+                # Immediately pull titlebar components to top
                 try:
                     res = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True)
                     for fid in res.stdout.strip().split('\n'):
