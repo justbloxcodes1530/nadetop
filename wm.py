@@ -115,7 +115,7 @@ try:
                 r_proc = subprocess.Popen([sys.executable, 'wresize.py', app_id])
                 active_decorations[app_id] = {'frame': f_proc, 'resize': r_proc}
         
-        # Maintain positioning anchors 
+        # Maintain positioning anchors and strict stacking rules
         dead_apps = []
         for app_id, procs in active_decorations.items():
             geo = get_geometry(app_id)
@@ -126,6 +126,34 @@ try:
                 continue
                 
             x, y, w, h = geo
+            
+            # =====================================================================
+            # ATOMIC WINDOW LAYERING ENGINE (The Fix)
+            # =====================================================================
+            try:
+                # 1. First, find our specific custom frame and resize handle IDs
+                # (Searching by name ensuring we isolate the correct matching components)
+                f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
+                r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
+                
+                # 2. ENFORCE THE STACKING QUEUE ORDER:
+                # We raise them in a split-second sequence so the system locks them together.
+                # App goes down first, decorations sit securely on the absolute top layer.
+                if f_id.isdigit() and r_id.isdigit():
+                    subprocess.Popen(['xdotool', 'windowraise', str(app_id)]) # App Canvas (Bottom Layer)
+                    subprocess.Popen(['xdotool', 'windowraise', str(f_id)])   # Yellow Tab Title Bar (Middle Layer)
+                    subprocess.Popen(['xdotool', 'windowraise', str(r_id)])   # Outside Resize Grip (Top Layer)
+            except Exception:
+                pass
+
+            # --- Your existing wresize mouse position checking logic continues below ---
+            try:
+                mouse_check = subprocess.run(['xdotool', 'getmouselocation', '--shell'], capture_output=True, text=True)
+                is_clicking = "button=1" in mouse_check.stdout
+                
+                if not is_clicking:
+                    subprocess.Popen(['xdotool', 'windowmove', r_id, str(x + w), str(y + h)])
+            except Exception: pass
             
             # 1. Stacking: Keep everything cleanly ordered over the window layout stack
             try:
