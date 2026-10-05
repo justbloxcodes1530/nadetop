@@ -3,28 +3,34 @@ import sys
 import socket
 
 # =====================================================================
-# 1. TERMUX ABSTRACT SOCKET FIX (Must run before importing Xlib display)
+# INTERCEPT AND AUTO-SCAN TERMUX ABSTRACT X11 SOCKETS
 # =====================================================================
 try:
     import Xlib.support.unix_connect as unix_connect
     
     def get_termux_abstract_socket(*args, **kwargs):
-        # Create a real Unix domain stream socket
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        # Scan through typical X11 display numbers in case :0 is occupied
+        for dno in [0, 1, 2, 3]:
+            abstract_address = f'\0.X11-unix/X{dno}'.encode()
+            try:
+                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                s.connect(abstract_address)
+                # Success! Dynamically match the environment variable to what we found
+                os.environ['DISPLAY'] = f':{dno}'
+                print(f"Connected successfully to Termux:X11 on display :{dno}!")
+                return s
+            except (socket.error, ConnectionRefusedError):
+                s.close()
+                continue
         
-        # Termux:X11 defaults to display :0 -> abstract path '\0.X11-unix/X0'
-        # The abstract namespace requires the first byte to be a null byte (\0)
-        abstract_address = b'\0.X11-unix/X0'
-        
-        # Manually connect the socket to Termux's background display server
-        s.connect(abstract_address)
-        return s
+        # If everything fails, raise the original error to let us know it's truly dead
+        raise ConnectionRefusedError("Could not find any active Termux:X11 server instances.")
 
-    # Inject the working socket directly into Xlib
     unix_connect.get_socket = get_termux_abstract_socket
 except ImportError:
     pass
 
+# Default fallback environment string
 os.environ['DISPLAY'] = ':0'
 
 # =====================================================================
