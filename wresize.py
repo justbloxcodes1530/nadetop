@@ -10,14 +10,12 @@ os.environ['DISPLAY'] = ':0'
 TARGET_APP_ID = sys.argv[1] if len(sys.argv) > 1 else None
 
 pygame.init()
-# A tiny 16x16 square grip
-SIZE = 16
+SIZE = 20  # Slightly larger box for easier grabbing
 frame = pygame.display.set_mode((SIZE, SIZE), pygame.NOFRAME)
 pygame.display.set_caption("NADETOP_RESIZE_GRIP")
 
 sdl_window = Window.from_display_module()
 
-# Fallback hardware mouse tracking
 if sys.platform == "win32":
     import ctypes
     from ctypes import wintypes
@@ -62,33 +60,26 @@ while True:
             new_x = gx - click_offset_x
             new_y = gy - click_offset_y
             
-            # Instantly follow cursor
+            # 1. Update grip position instantly to track cursor 1:1
             sdl_window.position = (new_x, new_y)
             
+            # 2. Resize app window directly based on the outer node coordinates
             if TARGET_APP_ID:
-                # Use xdotool to query where the app currently stands
                 try:
                     res = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', str(TARGET_APP_ID)], capture_output=True, text=True)
                     geo = {line.split('=')[0]: int(line.split('=')[1]) for line in res.stdout.strip().split('\n') if '=' in line}
                     app_x, app_y = geo.get('X'), geo.get('Y')
                     
-                    # Math out new width/height based on the position of our grip handle!
-                    new_w = (new_x + SIZE) - app_x
-                    new_h = (new_y + SIZE) - app_y
-                    
-                    # Enforce minimum size boundaries
-                    new_w = max(150, new_w)
-                    new_h = max(100, new_h)
+                    # Target dimension limits
+                    new_w = max(150, new_x - app_x)
+                    new_h = max(100, new_y - app_y)
                     
                     subprocess.Popen(['xdotool', 'windowsize', str(TARGET_APP_ID), str(new_w), str(new_h)])
                 except Exception:
                     pass
 
-    # Render a retro diagonally-striped resize grip
-    frame.fill((200, 200, 200)) # Grey handle background
-    pygame.draw.line(frame, (100, 100, 100), (SIZE, 0), (0, SIZE), 2)
-    pygame.draw.line(frame, (100, 100, 100), (SIZE, 6), (6, SIZE), 2)
-    pygame.draw.line(frame, (100, 100, 100), (SIZE, 12), (12, SIZE), 2)
-    
+    # Draw a clean, stylized retro outer grip square
+    frame.fill((100, 110, 120))  # Slate gray accent box
+    pygame.draw.rect(frame, (255, 255, 255), (0, 0, SIZE, SIZE), 2)  # Outer bright accent highlight border
     pygame.display.flip()
     clock.tick(60)

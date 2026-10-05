@@ -53,16 +53,25 @@ try:
             try:
                 f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 if f_id.isdigit():
-                    # Only map frame if user isn't actively holding down the drag loop
-                    # Let wframe.py handle movements, wm.py syncs layering
                     subprocess.Popen(['xdotool', 'windowraise', f_id])
             except Exception: pass
             
-            # 2. Bottom-Right: Align resize grip handle box precisely at (x+w-16, y+h-16)
+            # 2. Bottom-Right: Align resize grip handle box precisely POKING OUT
             try:
                 r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 if r_id.isdigit():
-                    subprocess.Popen(['xdotool', 'windowmove', r_id, str(x + w - 16), str(y + h - 16)])
+                    # --- ANTI-BUG / ANTI-JITTER FIX ---
+                    # Check if user is clicking on the desktop. If mouse is held down, 
+                    # let wresize.py handle positioning so we don't fight it.
+                    mouse_check = subprocess.run(['xdotool', 'getmouselocation', '--shell'], capture_output=True, text=True)
+                    is_clicking = "button=1" in mouse_check.stdout
+                    
+                    if not is_clicking:
+                        # --- THE POKE-OUT FIX ---
+                        # Removed "- 16". Putting it exactly at (x + w, y + h) pushes the 
+                        # square fully outside the window boundary box.
+                        subprocess.Popen(['xdotool', 'windowmove', r_id, str(x + w), str(y + h)])
+                    
                     subprocess.Popen(['xdotool', 'windowraise', r_id])
             except Exception: pass
             
