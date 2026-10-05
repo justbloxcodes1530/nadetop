@@ -1,47 +1,57 @@
 import os
 import subprocess
 
-# Ensure we are targeting the Termux X11 display
+# Ensure we map directly to Termux:X11
 os.environ['DISPLAY'] = ':0'
 
 def list_windows():
-    """Returns a list of open windows with their IDs and titles."""
+    """Returns a list of all raw X11 window IDs and their titles."""
     try:
-        # Runs 'wmctrl -l' to list all managed windows
-        result = subprocess.run(['wmctrl', '-l'], capture_output=True, text=True, check=True)
+        # Search for all windows (using a blank regex pattern matching everything)
+        result = subprocess.run(
+            ['xdotool', 'search', '--onlyvisible', '--name', '.*'], 
+            capture_output=True, text=True, check=True
+        )
+        window_ids = result.stdout.strip().split('\n')
+        
         windows = []
-        for line in result.stdout.strip().split('\n'):
-            if line:
-                parts = line.split(maxsplit=3)
-                window_id = parts[0]
-                window_title = parts[3] if len(parts) > 3 else "Unknown"
-                windows.append({'id': window_id, 'title': window_title})
+        for wid in window_ids:
+            if not wid.isdigit():
+                continue
+            # Get the name/title of each specific window ID
+            name_res = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
+            title = name_res.stdout.strip()
+            if title:
+                windows.append({'id': wid, 'title': title})
         return windows
     except subprocess.CalledProcessError:
         return []
 
-def focus_window(window_title_or_id):
-    """Brings a window to the front and focuses it."""
-    # -a activates (focuses) the window matching the title or ID
-    subprocess.run(['wmctrl', '-a', window_title_or_id])
+def focus_window(window_id):
+    """Brings the specific window ID to focus."""
+    subprocess.run(['xdotool', 'windowactivate', str(window_id)])
 
-def move_and_resize_window(window_title_or_id, x, y, width, height):
-    """Moves a window to (x, y) and resizes it to width x height."""
-    # -r targets the window
-    # -e format is: gravity,X,Y,width,height (0 means use default gravity)
-    geometry_string = f"0,{x},{y},{width},{height}"
-    subprocess.run(['wmctrl', '-r', window_title_or_id, '-e', geometry_string])
+def move_and_resize_window(window_id, x, y, width, height):
+    """Moves and resizes the target window ID instantly."""
+    # Move the window
+    subprocess.run(['xdotool', 'windowmove', str(window_id), str(x), str(y)])
+    # Resize the window
+    subprocess.run(['xdotool', 'windowsize', str(window_id), str(width), str(height)])
 
 # ==========================================
-# EXAMPLE USAGE
+# SANITY CHECK TEST RUN
 # ==========================================
 if __name__ == "__main__":
-    print("Scanning active windows...")
-    open_windows = list_windows()
+    print("Scanning active Termux:X11 windows via xdotool...")
+    windows = list_windows()
     
-    for win in open_windows:
-        print(f"Found Window -> ID: {win['id']} | Title: {win['title']}")
+    if not windows:
+        print("No windows detected yet. Open a window (like 'xfce4-terminal' or an app) in Termux:X11 first!")
+    
+    for win in windows:
+        print(f" Found -> ID: {win['id']} | Title: {win['title']}")
         
-    # Example: If you have an app open named "Leafpad"
-    # focus_window("Leafpad")
-    # move_and_resize_window("Leafpad", x=100, y=100, width=800, height=600)
+        # Example Test: If you see your window, you can uncomment this to move it!
+        # print(f"Moving {win['title']} to top left...")
+        # move_and_resize_window(win['id'], x=50, y=50, width=600, height=400)
+        # focus_window(win['id'])
