@@ -10,8 +10,25 @@ active_decorations = {}
 
 def get_visible_apps():
     try:
+        # Search for all visible windows
         res = subprocess.run(['xdotool', 'search', '--onlyvisible', '--name', '.*'], capture_output=True, text=True, check=True)
-        return [wid for wid in res.stdout.strip().split('\n') if wid.isdigit() and "NADETOP" not in subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True).stdout]
+        raw_ids = res.stdout.strip().split('\n')
+        
+        filtered_ids = []
+        for wid in raw_ids:
+            if not wid.isdigit():
+                continue
+            
+            # Fetch the actual window name
+            name_res = subprocess.run(['xdotool', 'getwindowname', wid], capture_output=True, text=True)
+            title = name_res.stdout.strip()
+            
+            # CRUCIAL FIX: If the window is a NADETOP element or blank, completely ignore it!
+            if "NADETOP" in title or not title:
+                continue
+                
+            filtered_ids.append(wid)
+        return filtered_ids
     except Exception:
         return []
 
@@ -23,12 +40,12 @@ def get_geometry(wid):
     except Exception:
         return None
 
-print("[WM] NADETOP Haiku Architecture Active.")
+print("[WM] NADETOP Clean Orchestrator Active.")
 try:
     while True:
         apps = get_visible_apps()
         
-        # Spawn components for new apps
+        # Spawn components for genuine apps only
         for app_id in apps:
             if app_id not in active_decorations:
                 print(f"[WM] Decorating Window {app_id}")
@@ -48,9 +65,9 @@ try:
                 
             x, y, w, h = geo
             
-            # Use xdotool to anchor elements based on the client window box
-            # 1. Top-Left: Place Haiku Yellow Tab Frame 32px above app
+            # 1. Stacking: Keep everything cleanly ordered over the window layout stack
             try:
+                # Find the frame matching our identifier
                 f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 if f_id.isdigit():
                     subprocess.Popen(['xdotool', 'windowraise', f_id])
@@ -60,16 +77,10 @@ try:
             try:
                 r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 if r_id.isdigit():
-                    # --- ANTI-BUG / ANTI-JITTER FIX ---
-                    # Check if user is clicking on the desktop. If mouse is held down, 
-                    # let wresize.py handle positioning so we don't fight it.
                     mouse_check = subprocess.run(['xdotool', 'getmouselocation', '--shell'], capture_output=True, text=True)
                     is_clicking = "button=1" in mouse_check.stdout
                     
                     if not is_clicking:
-                        # --- THE POKE-OUT FIX ---
-                        # Removed "- 16". Putting it exactly at (x + w, y + h) pushes the 
-                        # square fully outside the window boundary box.
                         subprocess.Popen(['xdotool', 'windowmove', r_id, str(x + w), str(y + h)])
                     
                     subprocess.Popen(['xdotool', 'windowraise', r_id])
@@ -78,7 +89,7 @@ try:
         for da in dead_apps:
             del active_decorations[da]
             
-        time.sleep(0.03)
+        time.sleep(0.05) # Slipped frequency slightly to prevent CPU stutter
 except KeyboardInterrupt:
     for procs in active_decorations.values():
         procs['frame'].terminate()

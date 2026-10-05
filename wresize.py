@@ -5,12 +5,10 @@ import pygame
 from pygame._sdl2 import Window
 
 os.environ['DISPLAY'] = ':0'
-
-# Read target app ID passed from wm.py
 TARGET_APP_ID = sys.argv[1] if len(sys.argv) > 1 else None
 
 pygame.init()
-SIZE = 20  # Slightly larger box for easier grabbing
+SIZE = 24  # Bumped to 24px for cleaner high-DPI tracking on mobile touch
 frame = pygame.display.set_mode((SIZE, SIZE), pygame.NOFRAME)
 pygame.display.set_caption("NADETOP_RESIZE_GRIP")
 
@@ -60,26 +58,28 @@ while True:
             new_x = gx - click_offset_x
             new_y = gy - click_offset_y
             
-            # 1. Update grip position instantly to track cursor 1:1
             sdl_window.position = (new_x, new_y)
             
-            # 2. Resize app window directly based on the outer node coordinates
             if TARGET_APP_ID:
                 try:
                     res = subprocess.run(['xdotool', 'getwindowgeometry', '--shell', str(TARGET_APP_ID)], capture_output=True, text=True)
                     geo = {line.split('=')[0]: int(line.split('=')[1]) for line in res.stdout.strip().split('\n') if '=' in line}
                     app_x, app_y = geo.get('X'), geo.get('Y')
                     
-                    # Target dimension limits
-                    new_w = max(150, new_x - app_x)
-                    new_h = max(100, new_y - app_y)
+                    # Math out target sizes
+                    new_w = new_x - app_x
+                    new_h = new_y - app_y
                     
+                    # Enforce strict layout minimums so heavy apps like Firefox don't crash
+                    new_w = max(200, new_w)
+                    new_h = max(150, new_h)
+                    
+                    # Explicit geometry resizing configuration flag
                     subprocess.Popen(['xdotool', 'windowsize', str(TARGET_APP_ID), str(new_w), str(new_h)])
                 except Exception:
                     pass
 
-    # Draw a clean, stylized retro outer grip square
-    frame.fill((100, 110, 120))  # Slate gray accent box
-    pygame.draw.rect(frame, (255, 255, 255), (0, 0, SIZE, SIZE), 2)  # Outer bright accent highlight border
+    frame.fill((70, 80, 90)) # Modern clean styling
+    pygame.draw.rect(frame, (255, 213, 0), (0, 0, SIZE, SIZE), 2)  # High contrast yellow highlight matching Haiku themes
     pygame.display.flip()
     clock.tick(60)
