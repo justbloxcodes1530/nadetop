@@ -79,7 +79,7 @@ while True:
                 except Exception:
                     pass
 
-    frame.fill((70, 80, 90)) # Modern clean styling
-    pygame.draw.rect(frame, (255, 213, 0), (0, 0, SIZE, SIZE), 2)  # High contrast yellow highlight matching Haiku themes
+    frame.fill((192, 192, 192)) # Modern clean styling
+    pygame.draw.rect(frame, (127, 127, 127), (0, 0, SIZE, SIZE), 1)  # High contrast yellow highlight matching Haiku themes
     pygame.display.flip()
-    clock.tick(60)
+    clock.tick(120)
