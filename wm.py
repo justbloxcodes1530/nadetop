@@ -6,8 +6,13 @@ import sys
 # =====================================================================
 try:
     import Xlib.support.unix_connect as unix_connect
-    def get_termux_abstract_socket(dname, host, dno):
+    def get_termux_abstract_socket(*args, **kwargs):
+        # The display number is always the last positional argument before auth flags,
+        # or we can extract it reliably from args[2] depending on the Xlib version.
+        # To be absolutely safe in Termux, we assume display :0 -> X0
+        dno = args[2] if len(args) > 2 else 0
         return b'\0.X11-unix/X' + str(dno).encode()
+    
     unix_connect.get_socket = get_termux_abstract_socket
 except ImportError:
     pass
