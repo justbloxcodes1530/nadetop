@@ -60,7 +60,7 @@ def sync_frame_and_app(app_id):
     # 1. Find the frame window matching this specific application
     try:
         # Search for our custom Pygame frames
-        res = subprocess.run(['xdotool', 'search', '--name', 'NADATOP_WINDOW_FRAME'], capture_output=True, text=True)
+        res = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True)
         frame_ids = res.stdout.strip().split('\n')
         
         for fid in frame_ids:
