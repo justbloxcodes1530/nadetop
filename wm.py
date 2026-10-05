@@ -2,8 +2,52 @@ import os
 import subprocess
 import time
 import sys
+import socket
+import threading
 
 os.environ['DISPLAY'] = ':0'
+
+SOCKET_PATH = "/tmp/nadetop_wm.sock"
+
+# Clean up any leftover dead socket files from old crashes
+if os.path.exists(SOCKET_PATH):
+    os.remove(SOCKET_PATH)
+
+def wm_ipc_listener():
+    """Background thread that listens for instructions from titlebars."""
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(SOCKET_PATH)
+    server.listen(5)
+    
+    while True:
+        try:
+            conn, _ = server.accept()
+            message = conn.recv(1024).decode('utf-8').strip()
+            conn.close()
+            
+            if message.startswith("focus:"):
+                target_app_id = message.split(":")[1]
+                print(f"[WM IPC] Focusing requested for app: {target_app_id}")
+                
+                # 1. Globally raise and activate the app using xdotool
+                subprocess.Popen(['xdotool', 'windowactivate', str(target_app_id)])
+                
+                # 2. Immediately bring its matching components to the absolute top
+                # (Your existing wm.py loop will maintain alignment, but doing it here prevents focus lag)
+                try:
+                    res = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True)
+                    for fid in res.stdout.strip().split('\n'):
+                        if fid.isdigit():
+                            subprocess.Popen(['xdotool', 'windowraise', fid])
+                except Exception: pass
+                
+        except Exception as e:
+            # Prevent thread from crashing if communication breaks momentarily
+            pass
+
+# Spin up the listener thread cleanly in the background
+ipc_thread = threading.Thread(target=wm_ipc_listener, daemon=True)
+ipc_thread.start()
 
 # Store processes cleanly: {app_id: {'frame': proc_obj, 'resize': proc_obj}}
 active_decorations = {}

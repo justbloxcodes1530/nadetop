@@ -3,6 +3,7 @@ import sys
 import subprocess
 import pygame
 import time
+import socket
 from pygame._sdl2 import Window
 
 os.environ['DISPLAY'] = ':0'
@@ -39,7 +40,7 @@ def get_geometry(wid):
         g = {line.split('=')[0]: int(line.split('=')[1]) for line in res.stdout.strip().split('\n') if '=' in line}
         return g.get('X'), g.get('Y'), g.get('WIDTH'), g.get('HEIGHT')
     except Exception:
-        return None
+        return 0, 0, 800, 600
 
 def title(wid):
     try:
@@ -47,6 +48,20 @@ def title(wid):
         return name_res.stdout.strip()
     except Exception:
         return "App"
+
+def request_wm_focus(app_id):
+    """Sends a non-blocking IPC message to wm.py asking to focus this window."""
+    if not app_id:
+        return
+    try:
+        # Open a quick link to the WM background server socket
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.connect("/tmp/nadetop_wm.sock")
+        s.sendall(f"focus:{app_id}".encode('utf-8'))
+        s.close()
+    except Exception:
+        # If the WM isn't running or listening, fail silently without freezing the frame
+        pass
 
 # Button dimensions & positions on the tab layout
 font = pygame.font.Font(None, 20)
@@ -78,6 +93,10 @@ while True:
             if event.button == 1:
                 mx, my = event.pos
                 
+                # --- THE IPC TRIGGER ---
+                # Notify wm.py immediately that this app should take absolute focus!
+                request_wm_focus(TARGET_APP_ID)
+                
                 # Check button clicks instead of dragging!
                 if btn_cls.collidepoint((mx, my)) and TARGET_APP_ID:
                     subprocess.Popen(['xdotool', 'windowkill', str(TARGET_APP_ID)])
@@ -89,7 +108,7 @@ while True:
                     if not maximized:
                         maximized = True
                         oldx, oldy, oldw, oldh = get_geometry(TARGET_APP_ID)
-                        sdl_window.position = (0,0)
+                        sdl_window.position = (0, 0)
                         subprocess.Popen(['xdotool', 'windowsize', str(TARGET_APP_ID), '100%', '100%'])
                         subprocess.Popen(['xdotool', 'windowmove', str(TARGET_APP_ID), '0', '32'])
                     else:
@@ -141,7 +160,7 @@ while True:
     
     # Minimalist inner indicators
     frame.blit(font.render("_", True, (255,255,255)), (177, 9))
-    frame.blit(font.render("[]", True, (255,255,255)), (201, 9))
+    frame.blit(font.render("=", True, (255,255,255)), (201, 9))
     frame.blit(font.render("X", True, (255,255,255)), (227, 8))
 
     pygame.display.flip()
