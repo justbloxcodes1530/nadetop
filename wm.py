@@ -26,23 +26,26 @@ def wm_ipc_listener():
             conn.close()
             
             if message.startswith("focus:"):
+                # Clean out string parsing split
                 target_app_id = message.split(":")[1]
-                print(f"[WM IPC] Focusing requested for app: {target_app_id}")
+                print(f"[WM IPC] Focus Event triggered for app: {target_app_id}")
                 
-                # --- FIXED FOCUS COMMAND ---
-                # Changed from 'windowactivate' to 'windowfocus' to bypass the _NET_ACTIVE_WINDOW check!
+                # 1. Inject hardware focus directly
                 subprocess.Popen(['xdotool', 'windowfocus', str(target_app_id)])
                 
-                # Immediately pull titlebar components to top
+                # 2. MATCHING LAYERS RESTACKING ENGINE (RUNS ONLY ONCE PER CLICK!)
                 try:
-                    res = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True)
-                    for fid in res.stdout.strip().split('\n'):
-                        if fid.isdigit():
-                            subprocess.Popen(['xdotool', 'windowraise', fid])
-                except Exception: pass
+                    f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
+                    r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
+                    
+                    if f_id.isdigit() and r_id.isdigit():
+                        # Chain the restacking instructions sequentially in a single execution step
+                        layer_command = f"xdotool windowraise {target_app_id} windowraise {f_id} windowraise {r_id}"
+                        subprocess.Popen(layer_command, shell=True)
+                except Exception:
+                    pass
                 
-        except Exception as e:
-            # Prevent thread from crashing if communication breaks momentarily
+        except Exception:
             pass
 
 # Spin up the listener thread cleanly in the background
@@ -115,7 +118,7 @@ try:
                 r_proc = subprocess.Popen([sys.executable, 'wresize.py', app_id])
                 active_decorations[app_id] = {'frame': f_proc, 'resize': r_proc}
         
-        # Maintain positioning anchors and strict stacking rules
+                # Maintain positioning anchors 
         dead_apps = []
         for app_id, procs in active_decorations.items():
             geo = get_geometry(app_id)
@@ -127,28 +130,19 @@ try:
                 
             x, y, w, h = geo
             
-            # =====================================================================
-            # SINGLE-SHOT ATOMIC LAYERING SYSTEM (The Fix)
-            # =====================================================================
+            # --- DELETED THE REPETITIVE WINDOWRAISE LOOP ENTIRELY ---
+            # (No more flashing because we aren't spamming X11 30 times a second!)
+            
+            # Keep the resize handle position sync tracking active
             try:
-                # 1. Isolate the specific custom frame and resize handle IDs
-                f_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_WINDOW_FRAME'], capture_output=True, text=True).stdout.strip().split('\n')[0]
                 r_id = subprocess.run(['xdotool', 'search', '--name', 'NADETOP_RESIZE_GRIP'], capture_output=True, text=True).stdout.strip().split('\n')[0]
-                
-                if f_id.isdigit() and r_id.isdigit():
-                    # Check if the user is currently holding down the mouse click
+                if r_id.isdigit():
                     mouse_check = subprocess.run(['xdotool', 'getmouselocation', '--shell'], capture_output=True, text=True)
                     is_clicking = "button=1" in mouse_check.stdout
                     
                     if not is_clicking:
-                        # --- THE ATOMIC CHAIN FIX ---
-                        # Instead of 3 separate Popen processes fighting each other, we chain them 
-                        # together into ONE string executed sequentially by the shell.
-                        # Order: Raise App -> Raise Frame -> Raise Grip
-                        layer_command = f"xdotool windowraise {app_id} windowraise {f_id} windowraise {r_id}"
-                        subprocess.Popen(layer_command, shell=True)
-                        
-            except Exception:
+                        subprocess.Popen(['xdotool', 'windowmove', r_id, str(x + w), str(y + h)])
+            except Exception: 
                 pass
 
             # --- Your existing wresize mouse position checking logic continues below ---
