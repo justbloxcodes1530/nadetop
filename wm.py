@@ -4,7 +4,7 @@ from ewmh import EWMH
 from Xlib import X, display
 from pygame._sdl2 import Window
 
-disp = display.Display(":1")
+disp = display.Display(":0")
 ewmh = EWMH(disp)
 root = disp.screen().root
 
