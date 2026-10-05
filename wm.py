@@ -1,106 +1,47 @@
 import os
-import sys
-import socket
+import subprocess
 
-# =====================================================================
-# 1. FIXED ABSTRACT NETWORK SCANNER FOR TERMUX:X11
-# =====================================================================
-try:
-    import Xlib.support.unix_connect as unix_connect
-    
-    def get_termux_abstract_socket(*args, **kwargs):
-        # We loop through possible formats since Termux apps isolate paths dynamically.
-        # Abstract socket names begin with a null byte (\0).
-        possible_addresses = [
-            b'\0.X11-unix/X0',
-            b'\0.X11-unix/X1',
-            b'\0/tmp/.X11-unix/X0',
-            b'\0/tmp/.X11-unix/X1'
-        ]
-        
-        for address in possible_addresses:
-            try:
-                s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                s.connect(address)
-                # Found it! Update our environment string to match the successful binding
-                display_num = address[-1:] # grab '0' or '1'
-                os.environ['DISPLAY'] = f':{display_num.decode()}'
-                print(f"[WM-Log] Successfully attached to abstract socket address: {address}")
-                return s
-            except (socket.error, ConnectionRefusedError):
-                s.close()
-                continue
-                
-        raise ConnectionRefusedError(
-            "Could not connect to any abstract Termux:X11 socket addresses. "
-            "Please ensure the Termux:X11 app is open and visible on your screen."
-        )
-
-    # Inject the scanner directly over Xlib's default connector
-    unix_connect.get_socket = get_termux_abstract_socket
-except ImportError:
-    pass
-
+# Ensure we are targeting the Termux X11 display
 os.environ['DISPLAY'] = ':0'
 
-# =====================================================================
-# 2. IMPORTS
-# =====================================================================
-import pygame
-from ewmh import EWMH
-from Xlib import X, display
-from pygame._sdl2 import Window
+def list_windows():
+    """Returns a list of open windows with their IDs and titles."""
+    try:
+        # Runs 'wmctrl -l' to list all managed windows
+        result = subprocess.run(['wmctrl', '-l'], capture_output=True, text=True, check=True)
+        windows = []
+        for line in result.stdout.strip().split('\n'):
+            if line:
+                parts = line.split(maxsplit=3)
+                window_id = parts[0]
+                window_title = parts[3] if len(parts) > 3 else "Unknown"
+                windows.append({'id': window_id, 'title': window_title})
+        return windows
+    except subprocess.CalledProcessError:
+        return []
 
-# Initialize Xlib Display
-disp = display.Display(":0")
-ewmh = EWMH(disp)
-root = disp.screen().root
+def focus_window(window_title_or_id):
+    """Brings a window to the front and focuses it."""
+    # -a activates (focuses) the window matching the title or ID
+    subprocess.run(['wmctrl', '-a', window_title_or_id])
 
-# Listen for window creation/mapping globally
-root.change_attributes(event_mask=X.SubstructureNotifyMask)
+def move_and_resize_window(window_title_or_id, x, y, width, height):
+    """Moves a window to (x, y) and resizes it to width x height."""
+    # -r targets the window
+    # -e format is: gravity,X,Y,width,height (0 means use default gravity)
+    geometry_string = f"0,{x},{y},{width},{height}"
+    subprocess.run(['wmctrl', '-r', window_title_or_id, '-e', geometry_string])
 
-# Initialize Pygame
-pygame.init()
-
-# Get screen resolution and create frameless window
-desktop_size = pygame.display.get_desktop_sizes()[0]
-screen = pygame.display.set_mode(desktop_size, pygame.NOFRAME)
-pygame.display.set_caption("Frameless Window")
-
-# Setup SDL2 Window hook to force position
-sdl_window = Window.from_display_module()
-sdl_window.position = (0, 0)
-
-clock = pygame.time.Clock()
-walking = True
-
-print("Script started successfully! Listening for X11 events...")
-
-# =====================================================================
-# 3. MAIN LOOP
-# =====================================================================
-while walking:
-    # Handle Pygame Events (Touch / Mouse / Keyboard)
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            walking = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_ESCAPE:  # Easy way to exit on Termux
-                walking = False
-
-    # Draw to screen
-    screen.fill((0, 127, 255))
-    pygame.display.flip()
-
-    # Handle X11 Events without freezing Pygame (NON-BLOCKING)
-    while disp.pending_events() > 0:
-        ev = disp.next_event()
+# ==========================================
+# EXAMPLE USAGE
+# ==========================================
+if __name__ == "__main__":
+    print("Scanning active windows...")
+    open_windows = list_windows()
+    
+    for win in open_windows:
+        print(f"Found Window -> ID: {win['id']} | Title: {win['title']}")
         
-        if ev.type == X.CreateNotify:
-            print(f" New window created! ID: {hex(ev.window.id)}")
-        elif ev.type == X.MapNotify:
-            print(f" Window mapped (shown): {hex(ev.window.id)}")
-
-    clock.tick(60)
-
-pygame.quit()
+    # Example: If you have an app open named "Leafpad"
+    # focus_window("Leafpad")
+    # move_and_resize_window("Leafpad", x=100, y=100, width=800, height=600)
